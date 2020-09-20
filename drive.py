@@ -64,6 +64,9 @@ def control_car(action_num):
         time.sleep(.001)  # 保证电机有一定的接收信号的时间
 
 
+# 四个ImageProcessor类会被实例化到一个线程池中（非真的线程池类实例化的线程池），ProcessOutput类的实例化对象会传到picamera的camera.start_recording接口中，因为复写了write函数，可以处理每一帧
+# 图像，但是考虑到树莓派的性能问题，不可能在下一帧到来之前就能处理完上一帧（包括预测，驱动小车），为了尽量不丢帧，用满四核，每个线程一处理完当前帧就被退回到线程池中，另外每一帧的到来都尝试去线程
+# 池中去取一个线程出来，即取一个核出来进行执行，但如果四个核都被取出来了，那这一帧就放弃处理了，等到下一帧，如果某个核又被退回了，就又可以继续处理新来的帧了。
 class ImageProcessor(threading.Thread):
     def __init__(self, owner):
         super(ImageProcessor, self).__init__()
@@ -125,6 +128,7 @@ class ImageProcessor(threading.Thread):
                     self.event.clear()
                     # Return ourselves to the available pool
                     with self.owner.lock:
+                        # the reason of the threading lock is maybe at the same time in other place for example in write in ProcessOutput self.pool.pop() poolis handled
                         self.owner.pool.append(self)
 
 
@@ -143,7 +147,7 @@ class ProcessOutput(object):
             # a spare one
             if self.processor:
                 # handle the last frame
-                self.processor.event.set()
+                self.processor.event.set()  # event is like threading lock a better flag for communication between threads 
             with self.lock:
                 if self.pool:
                     # take out a threading from the threading pool to handle the frame that is got at this round.

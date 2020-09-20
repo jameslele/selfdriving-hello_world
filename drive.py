@@ -142,9 +142,12 @@ class ProcessOutput(object):
             # New frame; set the current processor going and grab
             # a spare one
             if self.processor:
+                # handle the last frame
                 self.processor.event.set()
             with self.lock:
                 if self.pool:
+                    # take out a threading from the threading pool to handle the frame that is got at this round.
+                    # the reason of using more threading is maybe before next frame comes the last frame is not handled (for prediction and car action) finished yet
                     self.processor = self.pool.pop()
                 else:
                     # No processor's available, we'll have to skip
@@ -153,6 +156,7 @@ class ProcessOutput(object):
                     print("No processor's available! This frame must be skipped.")
                     self.processor = None
         if self.processor:
+            # store this frame and wait until next frame comes then this frame will be handled by this processor
             self.processor.stream.write(buf)
 
     def flush(self):
